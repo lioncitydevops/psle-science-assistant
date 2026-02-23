@@ -125,27 +125,49 @@ export async function POST(request: NextRequest) {
 
     const openai = getOpenAIClient();
 
-    // Step 1: Extract question from image using GPT-4 Vision
+    // Step 1: Extract question from image using GPT-4 Vision with enhanced OCR
     const extractionResponse = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || "gpt-4o",
       messages: [
+        {
+          role: "system",
+          content: `You are an expert OCR system specialized in reading Singapore PSLE Science exam questions. Your task is to accurately extract and transcribe ALL text from exam question images.
+
+CRITICAL INSTRUCTIONS:
+1. Read EVERY word carefully, character by character
+2. Preserve the exact wording - do not paraphrase or summarize
+3. Include question numbers (e.g., "Question 5", "Q3", "1.", "(a)", "(b)")
+4. Include all parts of multi-part questions
+5. Include mark allocations if shown (e.g., "[2 marks]", "(2m)")
+6. Describe any diagrams, tables, or figures in [brackets]
+7. For tables, preserve the structure using simple formatting
+8. If text is unclear, indicate with [unclear] but try your best guess
+9. Handle both printed text AND handwritten text
+10. Read left-to-right, top-to-bottom
+
+OUTPUT FORMAT:
+- Return ONLY the extracted question text
+- Preserve line breaks for readability
+- Do not add any commentary or explanations`,
+        },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "You are an expert at reading PSLE Science exam questions. Extract the complete question text from this image. If there are multiple parts (a, b, c, etc.), include all of them. Only return the question text, nothing else.",
+              text: "Extract the complete question text from this exam paper image. Read every word carefully and accurately. Include any diagrams descriptions, tables, and all question parts.",
             },
             {
               type: "image_url",
               image_url: {
                 url: image,
+                detail: "high",
               },
             },
           ],
         },
       ],
-      max_tokens: 1000,
+      max_tokens: 2000,
     });
 
     const extractedQuestion = extractionResponse.choices[0]?.message?.content || "";
