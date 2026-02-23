@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { queryVectorStore } from "@/lib/vector-store";
+import { queryHybridStore } from "@/lib/hybrid-graph-vector-store";
 
 function getOpenAIClient(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -12,7 +13,7 @@ function getOpenAIClient(): OpenAI {
 
 export async function POST(request: NextRequest) {
   try {
-    const { image } = await request.json();
+    const { image, useHybrid = false } = await request.json();
 
     if (!image) {
       return NextResponse.json(
@@ -56,7 +57,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2: Search for relevant content in the knowledge base
-    const relevantContext = await queryVectorStore(extractedQuestion);
+    // Use hybrid Graph-Vector retrieval if enabled (NW message passing)
+    let relevantContext;
+    let retrievalMethod = "vector";
+    
+    if (useHybrid) {
+      try {
+        const hybridResult = await queryHybridStore(extractedQuestion, 5, 2, 3);
+        relevantContext = hybridResult;
+        if (hybridResult.graphEnhanced) {
+          retrievalMethod = `hybrid (${hybridResult.messagePassingIterations} NW iterations)`;
+        }
+      } catch {
+        // Fall back to standard vector store
+        relevantContext = await queryVectorStore(extractedQuestion);
+      }
+    } else {
+      relevantContext = await queryVectorStore(extractedQuestion);
+    }
 
     // Step 3: Generate comprehensive answer with all required components
     const analysisResponse = await openai.chat.completions.create({
@@ -147,6 +165,9 @@ Respond in the following JSON format ONLY (no markdown, no code blocks, just pur
     if (!parsedResult.sourceReferences || parsedResult.sourceReferences.length === 0) {
       parsedResult.sourceReferences = relevantContext.sources;
     }
+
+    // Add retrieval method info
+    parsedResult.retrievalMethod = retrievalMethod;
 
     return NextResponse.json(parsedResult);
   } catch (error) {
