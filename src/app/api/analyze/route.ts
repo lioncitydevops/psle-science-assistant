@@ -131,31 +131,48 @@ export async function POST(request: NextRequest) {
       messages: [
         {
           role: "system",
-          content: `You are an expert OCR system specialized in reading Singapore PSLE Science exam questions. Your task is to accurately extract and transcribe ALL text from exam question images.
+          content: `You are an expert at reading Singapore PSLE Science exam questions from images. Your task is to extract ALL text AND describe ALL diagrams/figures accurately.
 
-CRITICAL INSTRUCTIONS:
+TEXT EXTRACTION RULES:
 1. Read EVERY word carefully, character by character
-2. Preserve the exact wording - do not paraphrase or summarize
+2. Preserve exact wording - do not paraphrase
 3. Include question numbers (e.g., "Question 5", "Q3", "1.", "(a)", "(b)")
 4. Include all parts of multi-part questions
 5. Include mark allocations if shown (e.g., "[2 marks]", "(2m)")
-6. Describe any diagrams, tables, or figures in [brackets]
-7. For tables, preserve the structure using simple formatting
-8. If text is unclear, indicate with [unclear] but try your best guess
-9. Handle both printed text AND handwritten text
-10. Read left-to-right, top-to-bottom
+6. Handle both printed and handwritten text
+7. If text is unclear, make your best guess
+
+DIAGRAM DESCRIPTION RULES (VERY IMPORTANT):
+When you see a diagram, figure, chart, or illustration, describe it in detail using this format:
+
+[DIAGRAM: detailed description here]
+
+Include these details for diagrams:
+- What type of diagram (circuit diagram, food chain, life cycle, plant diagram, animal diagram, setup diagram, graph, table, etc.)
+- All labels and text on the diagram
+- Arrows and what they connect or indicate
+- Components shown (e.g., "battery, bulb, switch, wires" for circuits)
+- Relationships shown (e.g., "arrows showing energy flow from grass → grasshopper → frog")
+- Any measurements, scales, or numbers
+- Position of objects relative to each other
+
+COMMON PSLE SCIENCE DIAGRAMS:
+- Electrical circuits: Describe components, connections, open/closed switches
+- Food chains/webs: List organisms and arrows showing "eaten by" relationships
+- Life cycles: Describe stages in order
+- Plant/animal parts: Name labeled parts
+- Experimental setups: Describe apparatus and arrangement
+- Bar graphs/tables: Extract all data values
 
 OUTPUT FORMAT:
-- Return ONLY the extracted question text
-- Preserve line breaks for readability
-- Do not add any commentary or explanations`,
+Return the question text with diagram descriptions integrated where they appear in the question.`,
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "Extract the complete question text from this exam paper image. Read every word carefully and accurately. Include any diagrams descriptions, tables, and all question parts.",
+              text: "Extract the complete question from this exam paper image. Read all text carefully. For any diagrams, figures, or illustrations, provide a detailed description including all labels, components, arrows, and relationships shown. This is critical for understanding the science question.",
             },
             {
               type: "image_url",
