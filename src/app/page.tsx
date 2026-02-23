@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useDropzone } from "react-dropzone";
-import { Upload, Camera, BookOpen, Lightbulb, CheckCircle, Loader2, X, FileText, Zap, Database } from "lucide-react";
+import { Upload, Camera, BookOpen, Lightbulb, CheckCircle, Loader2, X, FileText, Zap, Database, ImageIcon } from "lucide-react";
 
 interface AnalysisResult {
   question: string;
@@ -133,9 +133,11 @@ export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [compareResult, setCompareResult] = useState<CompareResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const file = acceptedFiles[0];
+  const handleFileSelect = useCallback((file: File) => {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -147,12 +149,34 @@ export default function Home() {
     }
   }, []);
 
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    const file = acceptedFiles[0];
+    if (file) {
+      handleFileSelect(file);
+    }
+  }, [handleFileSelect]);
+
+  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileSelect(file);
+    }
+  };
+
+  const handleGallerySelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileSelect(file);
+    }
+  };
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp"],
     },
     maxFiles: 1,
+    noClick: true,
   });
 
   const analyzeQuestion = async () => {
@@ -188,6 +212,8 @@ export default function Home() {
     setImage(null);
     setCompareResult(null);
     setError(null);
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    if (galleryInputRef.current) galleryInputRef.current.value = "";
   };
 
   return (
@@ -210,42 +236,78 @@ export default function Home() {
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Camera className="w-5 h-5 text-green-600" />
-            Upload Question Image
+            Capture or Upload Question
           </h2>
 
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               {!image ? (
-                <div
-                  {...getRootProps()}
-                  className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all duration-200 ${
-                    isDragActive
-                      ? "border-green-500 bg-green-50"
-                      : "border-gray-300 hover:border-green-400 hover:bg-green-50/50"
-                  }`}
-                >
-                  <input {...getInputProps()} />
-                  <Upload className="w-10 h-10 mx-auto text-gray-400 mb-3" />
-                  <p className="text-gray-600 font-medium text-sm">
-                    {isDragActive
-                      ? "Drop the image here..."
-                      : "Drag & drop an image, or click to select"}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    Supports PNG, JPG, JPEG, GIF, WEBP
-                  </p>
+                <div className="space-y-4">
+                  {/* Camera and Gallery Buttons - Mobile Optimized */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="flex flex-col items-center justify-center gap-2 p-6 bg-green-600 hover:bg-green-700 text-white rounded-xl transition-colors"
+                    >
+                      <Camera className="w-8 h-8" />
+                      <span className="font-semibold text-sm">Take Photo</span>
+                      <span className="text-xs opacity-80">Use Camera</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => galleryInputRef.current?.click()}
+                      className="flex flex-col items-center justify-center gap-2 p-6 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
+                    >
+                      <ImageIcon className="w-8 h-8" />
+                      <span className="font-semibold text-sm">Gallery</span>
+                      <span className="text-xs opacity-80">Choose Photo</span>
+                    </button>
+                  </div>
+
+                  {/* Hidden file inputs */}
+                  <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleCameraCapture}
+                    className="hidden"
+                  />
+                  <input
+                    ref={galleryInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleGallerySelect}
+                    className="hidden"
+                  />
+
+                  {/* Desktop Drag & Drop */}
+                  <div
+                    {...getRootProps()}
+                    className={`border-2 border-dashed rounded-xl p-4 text-center transition-all duration-200 hidden md:block ${
+                      isDragActive
+                        ? "border-green-500 bg-green-50"
+                        : "border-gray-300 hover:border-green-400 hover:bg-green-50/50"
+                    }`}
+                  >
+                    <input {...getInputProps()} />
+                    <Upload className="w-6 h-6 mx-auto text-gray-400 mb-2" />
+                    <p className="text-gray-500 text-xs">
+                      Or drag & drop an image here (desktop)
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3">
                   <div className="relative">
                     <img
                       src={image}
-                      alt="Uploaded question"
-                      className="w-full rounded-lg border border-gray-200 max-h-64 object-contain"
+                      alt="Captured question"
+                      className="w-full rounded-lg border border-gray-200 max-h-64 object-contain bg-gray-50"
                     />
                     <button
                       onClick={clearImage}
-                      className="absolute top-2 right-2 w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors"
+                      className="absolute top-2 right-2 w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center transition-colors shadow-lg"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -254,19 +316,27 @@ export default function Home() {
                   <button
                     onClick={analyzeQuestion}
                     disabled={isAnalyzing}
-                    className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+                    className="w-full py-4 px-4 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-lg"
                   >
                     {isAnalyzing ? (
                       <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        Analyzing with Both Methods...
+                        <Loader2 className="w-6 h-6 animate-spin" />
+                        Analyzing...
                       </>
                     ) : (
                       <>
-                        <Lightbulb className="w-5 h-5" />
-                        Compare Retrieval Methods
+                        <Lightbulb className="w-6 h-6" />
+                        Analyze Question
                       </>
                     )}
+                  </button>
+
+                  <button
+                    onClick={clearImage}
+                    className="w-full py-2 px-4 border border-gray-300 text-gray-600 font-medium rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Camera className="w-4 h-4" />
+                    Take Another Photo
                   </button>
                 </div>
               )}
@@ -295,6 +365,13 @@ export default function Home() {
                     <p className="text-xs text-gray-600">NW-Duality framework with k-NN graph + message passing</p>
                   </div>
                 </div>
+              </div>
+              
+              <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                <h4 className="font-medium text-green-900 text-sm mb-1">📱 Mobile Tip</h4>
+                <p className="text-xs text-gray-600">
+                  Tap &quot;Take Photo&quot; to capture your exam question directly with your camera. Hold the phone steady for best results.
+                </p>
               </div>
             </div>
           </div>
@@ -358,11 +435,11 @@ export default function Home() {
         {!compareResult && !isAnalyzing && (
           <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <FileText className="w-8 h-8 text-gray-400" />
+              <Camera className="w-8 h-8 text-gray-400" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No Results Yet</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to Scan</h3>
             <p className="text-gray-500 text-sm">
-              Upload an image of your exam question to compare retrieval methods
+              Take a photo of your exam question or upload from gallery
             </p>
           </div>
         )}
