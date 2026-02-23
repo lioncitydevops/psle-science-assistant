@@ -11,9 +11,110 @@ function getOpenAIClient(): OpenAI {
   return new OpenAI({ apiKey });
 }
 
+interface RetrievalContext {
+  context: string;
+  sources: string[];
+}
+
+async function generateAnswer(
+  openai: OpenAI,
+  extractedQuestion: string,
+  relevantContext: RetrievalContext,
+  retrievalMethod: string
+) {
+  const analysisResponse = await openai.chat.completions.create({
+    model: process.env.OPENAI_MODEL || "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: `You are an expert PSLE Science tutor. Your role is to help students understand and answer PSLE Science exam questions correctly.
+
+You must provide responses in a specific JSON format that includes:
+1. The suggested answer (complete, exam-ready answer)
+2. Required keywords (words/phrases that MUST appear in the answer to score marks)
+3. Marking scheme (how marks are allocated, what points earn marks)
+4. Related concepts (the underlying science concepts being tested)
+
+Use the following context from PSLE Science study materials to inform your answer:
+
+---
+${relevantContext.context}
+---
+
+Always base your answers on Singapore PSLE Science curriculum standards. Use proper scientific terminology appropriate for Primary 6 level.`,
+      },
+      {
+        role: "user",
+        content: `Please analyze this PSLE Science question and provide a comprehensive response:
+
+Question: ${extractedQuestion}
+
+Respond in the following JSON format ONLY (no markdown, no code blocks, just pure JSON):
+{
+  "question": "the extracted question",
+  "suggestedAnswer": "the complete model answer that would score full marks",
+  "keywords": ["keyword1", "keyword2", "keyword3"],
+  "markingScheme": [
+    "1 mark: for stating...",
+    "1 mark: for explaining..."
+  ],
+  "relatedConcepts": [
+    {
+      "concept": "Concept Name",
+      "explanation": "Brief explanation of the concept and how it relates to this question"
+    }
+  ],
+  "sourceReferences": ["Reference from study materials used"]
+}`,
+      },
+    ],
+    max_tokens: 2000,
+    temperature: 0.3,
+  });
+
+  const analysisContent = analysisResponse.choices[0]?.message?.content || "";
+
+  let parsedResult;
+  try {
+    let cleanedContent = analysisContent.trim();
+    if (cleanedContent.startsWith("```json")) {
+      cleanedContent = cleanedContent.slice(7);
+    }
+    if (cleanedContent.startsWith("```")) {
+      cleanedContent = cleanedContent.slice(3);
+    }
+    if (cleanedContent.endsWith("```")) {
+      cleanedContent = cleanedContent.slice(0, -3);
+    }
+    parsedResult = JSON.parse(cleanedContent.trim());
+  } catch {
+    parsedResult = {
+      question: extractedQuestion,
+      suggestedAnswer: analysisContent,
+      keywords: [],
+      markingScheme: ["Unable to determine marking scheme"],
+      relatedConcepts: [
+        {
+          concept: "General Science",
+          explanation: "Please review the answer for relevant concepts",
+        },
+      ],
+      sourceReferences: relevantContext.sources,
+    };
+  }
+
+  if (!parsedResult.sourceReferences || parsedResult.sourceReferences.length === 0) {
+    parsedResult.sourceReferences = relevantContext.sources;
+  }
+
+  parsedResult.retrievalMethod = retrievalMethod;
+
+  return parsedResult;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { image, useHybrid = false } = await request.json();
+    const { image, compareMode = true } = await request.json();
 
     if (!image) {
       return NextResponse.json(
@@ -56,120 +157,48 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 2: Search for relevant content in the knowledge base
-    // Use hybrid Graph-Vector retrieval if enabled (NW message passing)
-    let relevantContext;
-    let retrievalMethod = "vector";
-    
-    if (useHybrid) {
-      try {
-        const hybridResult = await queryHybridStore(extractedQuestion, 5, 2, 3);
-        relevantContext = hybridResult;
-        if (hybridResult.graphEnhanced) {
-          retrievalMethod = `hybrid (${hybridResult.messagePassingIterations} NW iterations)`;
-        }
-      } catch {
-        // Fall back to standard vector store
-        relevantContext = await queryVectorStore(extractedQuestion);
-      }
-    } else {
-      relevantContext = await queryVectorStore(extractedQuestion);
-    }
+    if (compareMode) {
+      // Run both retrievals in parallel
+      const [standardContext, hybridResult] = await Promise.all([
+        queryVectorStore(extractedQuestion),
+        queryHybridStore(extractedQuestion, 5, 2, 3).catch(() => ({
+          context: "",
+          sources: [],
+          graphEnhanced: false,
+          messagePassingIterations: 0,
+        })),
+      ]);
 
-    // Step 3: Generate comprehensive answer with all required components
-    const analysisResponse = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert PSLE Science tutor. Your role is to help students understand and answer PSLE Science exam questions correctly.
-
-You must provide responses in a specific JSON format that includes:
-1. The suggested answer (complete, exam-ready answer)
-2. Required keywords (words/phrases that MUST appear in the answer to score marks)
-3. Marking scheme (how marks are allocated, what points earn marks)
-4. Related concepts (the underlying science concepts being tested)
-
-Use the following context from PSLE Science study materials to inform your answer:
-
----
-${relevantContext.context}
----
-
-Always base your answers on Singapore PSLE Science curriculum standards. Use proper scientific terminology appropriate for Primary 6 level.`,
-        },
-        {
-          role: "user",
-          content: `Please analyze this PSLE Science question and provide a comprehensive response:
-
-Question: ${extractedQuestion}
-
-Respond in the following JSON format ONLY (no markdown, no code blocks, just pure JSON):
-{
-  "question": "the extracted question",
-  "suggestedAnswer": "the complete model answer that would score full marks",
-  "keywords": ["keyword1", "keyword2", "keyword3"],
-  "markingScheme": [
-    "1 mark: for stating...",
-    "1 mark: for explaining..."
-  ],
-  "relatedConcepts": [
-    {
-      "concept": "Concept Name",
-      "explanation": "Brief explanation of the concept and how it relates to this question"
-    }
-  ],
-  "sourceReferences": ["Reference from study materials used"]
-}`,
-        },
-      ],
-      max_tokens: 2000,
-      temperature: 0.3,
-    });
-
-    const analysisContent = analysisResponse.choices[0]?.message?.content || "";
-
-    // Parse the JSON response
-    let parsedResult;
-    try {
-      // Clean up the response in case it has markdown code blocks
-      let cleanedContent = analysisContent.trim();
-      if (cleanedContent.startsWith("```json")) {
-        cleanedContent = cleanedContent.slice(7);
-      }
-      if (cleanedContent.startsWith("```")) {
-        cleanedContent = cleanedContent.slice(3);
-      }
-      if (cleanedContent.endsWith("```")) {
-        cleanedContent = cleanedContent.slice(0, -3);
-      }
-      parsedResult = JSON.parse(cleanedContent.trim());
-    } catch {
-      // If JSON parsing fails, create a structured response from the text
-      parsedResult = {
-        question: extractedQuestion,
-        suggestedAnswer: analysisContent,
-        keywords: [],
-        markingScheme: ["Unable to determine marking scheme"],
-        relatedConcepts: [
-          {
-            concept: "General Science",
-            explanation: "Please review the answer for relevant concepts",
-          },
-        ],
-        sourceReferences: relevantContext.sources,
+      const hybridContext: RetrievalContext = {
+        context: hybridResult.context,
+        sources: hybridResult.sources,
       };
+
+      // Generate answers for both methods in parallel
+      const [standardResult, hybridResultFinal] = await Promise.all([
+        generateAnswer(openai, extractedQuestion, standardContext, "Standard Vector Search"),
+        generateAnswer(
+          openai,
+          extractedQuestion,
+          hybridContext,
+          hybridResult.graphEnhanced
+            ? `Hybrid Graph-Vector (${hybridResult.messagePassingIterations} NW iterations)`
+            : "Hybrid (fallback)"
+        ),
+      ]);
+
+      return NextResponse.json({
+        compareMode: true,
+        question: extractedQuestion,
+        standard: standardResult,
+        hybrid: hybridResultFinal,
+      });
+    } else {
+      // Single mode - just standard
+      const relevantContext = await queryVectorStore(extractedQuestion);
+      const result = await generateAnswer(openai, extractedQuestion, relevantContext, "Standard Vector Search");
+      return NextResponse.json(result);
     }
-
-    // Add source references if not present
-    if (!parsedResult.sourceReferences || parsedResult.sourceReferences.length === 0) {
-      parsedResult.sourceReferences = relevantContext.sources;
-    }
-
-    // Add retrieval method info
-    parsedResult.retrievalMethod = retrievalMethod;
-
-    return NextResponse.json(parsedResult);
   } catch (error) {
     console.error("Error analyzing question:", error);
     return NextResponse.json(
