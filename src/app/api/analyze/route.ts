@@ -131,7 +131,10 @@ export async function POST(request: NextRequest) {
       messages: [
         {
           role: "system",
-          content: `You are an expert at reading Singapore PSLE Science exam questions from images. Your task is to extract ALL text AND describe ALL diagrams/figures accurately.
+          content: `You are an expert at reading Singapore PSLE Science exam questions from images. Your task is to extract ALL text AND describe ALL diagrams as an INTEGRATED, COHERENT question.
+
+CRITICAL: THE DIAGRAM AND TEXT ARE RELATED AND MUST BE INTERPRETED TOGETHER.
+The diagram is NOT separate from the question - it provides essential context that the question refers to.
 
 TEXT EXTRACTION RULES:
 1. Read EVERY word carefully, character by character
@@ -139,40 +142,46 @@ TEXT EXTRACTION RULES:
 3. Include question numbers (e.g., "Question 5", "Q3", "1.", "(a)", "(b)")
 4. Include all parts of multi-part questions
 5. Include mark allocations if shown (e.g., "[2 marks]", "(2m)")
-6. Handle both printed and handwritten text
-7. If text is unclear, make your best guess
+6. Understand that phrases like "the diagram above", "as shown", "in the figure", "from the diagram" refer to the visual content
 
-DIAGRAM DESCRIPTION RULES (VERY IMPORTANT):
-When you see a diagram, figure, chart, or illustration, describe it in detail using this format:
+DIAGRAM-TEXT INTEGRATION (VERY IMPORTANT):
+The diagram and question text work together. When extracting:
+1. First, understand what the diagram shows
+2. Then, read the question text
+3. Connect references in the text to elements in the diagram
+4. Output a complete, self-contained question that includes diagram information
 
-[DIAGRAM: detailed description here]
+FORMAT FOR OUTPUT:
+Structure your output so someone WITHOUT the image can fully understand the question:
 
-Include these details for diagrams:
-- What type of diagram (circuit diagram, food chain, life cycle, plant diagram, animal diagram, setup diagram, graph, table, etc.)
-- All labels and text on the diagram
-- Arrows and what they connect or indicate
-- Components shown (e.g., "battery, bulb, switch, wires" for circuits)
-- Relationships shown (e.g., "arrows showing energy flow from grass → grasshopper → frog")
-- Any measurements, scales, or numbers
-- Position of objects relative to each other
+[DIAGRAM CONTEXT]
+Describe what the diagram shows in detail - type, components, labels, arrows, relationships, states, positions.
 
-COMMON PSLE SCIENCE DIAGRAMS:
-- Electrical circuits: Describe components, connections, open/closed switches
-- Food chains/webs: List organisms and arrows showing "eaten by" relationships
-- Life cycles: Describe stages in order
-- Plant/animal parts: Name labeled parts
-- Experimental setups: Describe apparatus and arrangement
-- Bar graphs/tables: Extract all data values
+[QUESTION]
+The exact question text, with any diagram references made clear.
 
-OUTPUT FORMAT:
-Return the question text with diagram descriptions integrated where they appear in the question.`,
+EXAMPLE OUTPUT:
+[DIAGRAM CONTEXT]
+The diagram shows an electrical circuit with: a battery (labeled "Cell"), two light bulbs (labeled "Bulb A" and "Bulb B") connected in series, and a switch (labeled "S") positioned between the bulbs. The switch is currently OPEN (circuit is broken). Wires connect all components in a loop.
+
+[QUESTION]
+Question 3(a) [2 marks]
+Based on the circuit diagram above, what will happen to Bulb A when switch S is closed? Explain your answer.
+
+COMMON PSLE SCIENCE DIAGRAMS TO LOOK FOR:
+- Electrical circuits: components, series/parallel, switch states
+- Food chains/webs: organisms, energy flow arrows
+- Life cycles: stages, sequence, transformations
+- Plant/animal anatomy: labeled parts, functions implied
+- Experimental setups: apparatus, variables, what's being tested
+- Graphs/tables: data values, axes labels, trends`,
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "Extract the complete question from this exam paper image. Read all text carefully. For any diagrams, figures, or illustrations, provide a detailed description including all labels, components, arrows, and relationships shown. This is critical for understanding the science question.",
+              text: "Extract the complete question from this exam image. The diagram and text are RELATED - interpret them together. Provide a complete output that includes: 1) A detailed DIAGRAM CONTEXT section describing everything shown in any diagrams, and 2) The exact QUESTION text. Someone reading your output should fully understand the question without seeing the image.",
             },
             {
               type: "image_url",
